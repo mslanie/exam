@@ -1,0 +1,6 @@
+{
+  "name": "English with Ms. Lanie",
+  "description": "An English learning management portal and interactive study console designed with clean minimalism.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
