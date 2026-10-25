@@ -138,14 +138,14 @@ export function convertHtmlToFormattedMarkdown(html: string): string {
 
 /**
  * Direct call to Google Gemini REST API using the user's API Key.
- * Supports gemini-3.8-flash, gemini-flash-latest, and gemini-2.5-flash with image support.
+ * Supports gemini-3.8-flash, gemini-flash-latest, and gemini-3.1-flash-lite with image support.
  */
 async function callGeminiDirectly(
   apiKey: string,
   prompt: string,
   base64Image?: { mimeType: string; data: string }
 ): Promise<string> {
-  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
+  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
   let lastError: any = null;
 
   for (const model of models) {
@@ -180,6 +180,28 @@ async function callGeminiDirectly(
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         const message = errorData?.error?.message || `HTTP ${res.status}: ${res.statusText}`;
+
+        // 403 / PERMISSION_DENIED: Cloud Project / Key denied by Google
+        if (res.status === 403 || message.includes('PERMISSION_DENIED') || message.includes('denied access')) {
+          throw new Error('Dự án hoặc API Key hiện tại bị Google từ chối quyền truy cập (403 PERMISSION_DENIED: Your project has been denied access). Dự án Google Cloud của bạn bị hạn chế hoặc chưa kích hoạt Generative Language API. Vui lòng tạo một API Key mới bằng tài khoản Google khác tại https://aistudio.google.com/apikey.');
+        }
+
+        // Invalid key
+        if (message.includes('API_KEY_INVALID') || message.includes('key not valid')) {
+          throw new Error('Gemini API Key không hợp lệ. Vui lòng kiểm tra lại mã key.');
+        }
+
+        // Quota
+        if (res.status === 429 || message.includes('Quota exceeded') || message.includes('RESOURCE_EXHAUSTED')) {
+          throw new Error('API Key đã vượt quá hạn mức miễn phí (Quota exceeded). Vui lòng thử lại sau hoặc đổi key.');
+        }
+
+        // 404 or deprecated model - try next fallback model
+        if (res.status === 404 || message.includes('no longer available') || message.includes('NOT_FOUND')) {
+          lastError = new Error(message);
+          continue;
+        }
+
         throw new Error(message);
       }
 
@@ -191,6 +213,16 @@ async function callGeminiDirectly(
       }
     } catch (err: any) {
       lastError = err;
+      const msg = err?.message || '';
+      // If error is non-recoverable key or permission issue, stop immediately
+      if (
+        msg.includes('PERMISSION_DENIED') ||
+        msg.includes('denied access') ||
+        msg.includes('không hợp lệ') ||
+        msg.includes('vượt quá hạn mức')
+      ) {
+        throw err;
+      }
       console.warn(`Direct Gemini call failed with model ${model}:`, err.message);
     }
   }
@@ -249,10 +281,16 @@ export async function testGeminiApiKey(apiKey: string): Promise<{ success: boole
     return { success: false, message: 'Google Gemini phản hồi rỗng.' };
   } catch (directErr: any) {
     const errMsg = directErr?.message || 'Lỗi không xác định khi kết nối Gemini API';
+    if (errMsg.includes('PERMISSION_DENIED') || errMsg.includes('denied access') || errMsg.includes('403')) {
+      return {
+        success: false,
+        message: 'Dự án hoặc API Key hiện tại bị Google từ chối quyền truy cập (403 PERMISSION_DENIED: Your project has been denied access). Dự án Google Cloud của bạn bị hạn chế hoặc chưa kích hoạt Generative Language API. Vui lòng tạo API Key mới bằng tài khoản Google khác tại https://aistudio.google.com/apikey.'
+      };
+    }
     if (errMsg.includes('API_KEY_INVALID') || errMsg.includes('key not valid')) {
       return { success: false, message: 'Gemini API Key không hợp lệ. Vui lòng kiểm tra lại mã key.' };
     }
-    if (errMsg.includes('Quota exceeded') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+    if (errMsg.includes('Quota exceeded') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('429')) {
       return { success: false, message: 'API Key đã vượt quá hạn mức miễn phí (Quota exceeded).' };
     }
     return { success: false, message: `Lỗi kết nối Gemini API: ${errMsg}` };
@@ -344,6 +382,23 @@ ${rawText}
           }));
         if (normalized.length > 0) {
           return { success: true, questions: normalized };
+        }
+      }
+
+      // If server returned a clear 403 or permission denied error, propagate it
+      if (!res.ok && data?.error) {
+        const serverErr = String(data.error);
+        if (
+          serverErr.includes('PERMISSION_DENIED') ||
+          serverErr.includes('denied access') ||
+          serverErr.includes('từ chối') ||
+          res.status === 403
+        ) {
+          return {
+            success: false,
+            questions: [],
+            error: serverErr
+          };
         }
       }
     }

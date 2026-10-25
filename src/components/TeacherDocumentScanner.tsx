@@ -240,11 +240,11 @@ Ex2:
           setIsScanning(false);
           return;
         } else if (aiResult.error) {
-          setScanError(`Thông báo Gemini AI: ${aiResult.error} — Tự động dùng thuật toán nội bộ thông minh.`);
+          setScanError(aiResult.error);
         }
       } catch (err: any) {
         console.warn('Gemini AI scan failed:', err);
-        setScanError('Lỗi kết nối Gemini AI. Sử dụng thuật toán quét nội bộ thông minh.');
+        setScanError('Lỗi kết nối Gemini AI. Đã tự động kích hoạt thuật toán quét nội bộ thông minh.');
       }
     }
 
@@ -562,10 +562,17 @@ Ex2:
             </button>
 
             {scanError && (
-              <p className="text-[11px] text-amber-800 font-semibold bg-amber-50 p-2 rounded-lg border border-amber-200 flex items-center gap-1.5">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>{scanError}</span>
-              </p>
+              <div className="text-[11px] text-amber-900 bg-amber-50 p-3 rounded-xl border border-amber-300 space-y-1.5">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1 leading-relaxed">
+                    <p className="font-semibold text-stone-900">{scanError}</p>
+                    <p className="text-[10px] text-stone-600">
+                      💡 <strong>Hệ thống vẫn tự động tạo đề thi thành công:</strong> Thuật toán nội bộ đã bóc tách chính xác các câu hỏi với khoảng trống <code>_______</code>, giữ nguyên các từ nhấn mạnh và loại bỏ tiêu đề Ex1, Ex2...
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>

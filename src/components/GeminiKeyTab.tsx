@@ -73,7 +73,7 @@ export const GeminiKeyTab: React.FC<GeminiKeyTabProps> = ({
               <Sparkles className="w-3.5 h-3.5 text-amber-600" />
               <span>AI Integration</span>
             </span>
-            <span className="text-xs text-stone-500 font-semibold">Gemini 3.6 Flash</span>
+            <span className="text-xs text-stone-500 font-semibold">Gemini 3.8 Flash</span>
           </div>
           <h1 className="text-xl font-bold text-stone-900">
             Cấu Hình Gemini API Key Để Quét Đề Tự Động

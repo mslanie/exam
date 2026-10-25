@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { GoogleGenAI } from '@google/genai';
 
 async function generateGeminiContent(ai: GoogleGenAI, contents: any) {
-  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
+  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
   let lastError: any = null;
 
   for (const model of models) {
@@ -14,16 +14,18 @@ async function generateGeminiContent(ai: GoogleGenAI, contents: any) {
       return response;
     } catch (err: any) {
       lastError = err;
+      const errMsg = err?.message || '';
       const isNotFound =
         err?.status === 404 ||
-        err?.message?.includes('404') ||
-        err?.message?.includes('no longer available') ||
-        err?.message?.includes('NOT_FOUND') ||
-        err?.message?.includes('not found');
+        errMsg.includes('404') ||
+        errMsg.includes('no longer available') ||
+        errMsg.includes('NOT_FOUND') ||
+        errMsg.includes('not found');
 
       if (isNotFound) {
         continue;
       }
+      // If it's a permission denied (403), quota exceeded (429), or invalid key, do not loop over other models
       throw err;
     }
   }
@@ -168,8 +170,22 @@ ${text || ''}
     return res.json({ success: true, questions: sanitized });
   } catch (err: any) {
     console.error('Gemini API Vercel scan error:', err);
-    return res.status(500).json({
-      error: err.message || 'Lỗi khi kết nối với Gemini AI. Vui lòng kiểm tra lại API Key.'
+    let errMsg = err?.message || 'Lỗi khi kết nối với Gemini AI.';
+    const isPermissionDenied =
+      err?.status === 403 ||
+      errMsg.includes('PERMISSION_DENIED') ||
+      errMsg.includes('denied access');
+
+    if (isPermissionDenied) {
+      errMsg = 'Dự án hoặc API Key hiện tại bị Google từ chối quyền truy cập (403 PERMISSION_DENIED: Your project has been denied access). Dự án Google Cloud của tài khoản này bị hạn chế hoặc chưa kích hoạt Generative Language API. Vui lòng tạo API Key mới từ tài khoản Google khác tại https://aistudio.google.com/apikey.';
+    } else if (errMsg.includes('API_KEY_INVALID') || errMsg.includes('key not valid')) {
+      errMsg = 'Gemini API Key không hợp lệ. Vui lòng kiểm tra lại mã key.';
+    } else if (errMsg.includes('Quota exceeded') || errMsg.includes('RESOURCE_EXHAUSTED') || err?.status === 429) {
+      errMsg = 'API Key đã vượt quá hạn mức miễn phí (Quota exceeded). Vui lòng thử lại sau hoặc đổi key.';
+    }
+
+    return res.status(err?.status && err.status >= 400 && err.status < 600 ? err.status : 500).json({
+      error: errMsg
     });
   }
 }
