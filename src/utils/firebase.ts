@@ -122,15 +122,46 @@ export async function saveGameToCloud(game: GameQuiz): Promise<boolean> {
 
 /**
  * Xóa 1 game khỏi Firebase Realtime Database
+ * Hỗ trợ xóa cả đường dẫn trực tiếp (games/id), dạng mảng, và dạng map key
  */
 export async function deleteGameFromCloud(gameId: string): Promise<boolean> {
+  if (!gameId) return false;
   try {
-    const gameRef = ref(database, `games/${gameId}`);
-    await remove(gameRef);
+    // 1. Thử xóa trực tiếp đường dẫn games/${gameId}
+    const directRef = ref(database, `games/${gameId}`);
+    await remove(directRef);
+
+    // 2. Kiểm tra node games tổng để xử lý nếu Firebase đang lưu dạng mảng hoặc key khác
+    try {
+      const gamesRef = ref(database, 'games');
+      const snap = await get(gamesRef);
+      if (snap.exists()) {
+        const val = snap.val();
+        if (Array.isArray(val)) {
+          // Lưu dạng mảng -> lọc bỏ game này và ghi lại mảng mới
+          const filtered = val.filter((item) => item && item.id && item.id !== gameId);
+          await set(gamesRef, filtered);
+        } else if (typeof val === 'object' && val !== null) {
+          // Lưu dạng Object -> tìm key tương ứng có item.id === gameId
+          const removals: Promise<void>[] = [];
+          for (const [key, item] of Object.entries(val)) {
+            if (item && ((item as any).id === gameId || key === gameId)) {
+              removals.push(remove(ref(database, `games/${key}`)));
+            }
+          }
+          if (removals.length > 0) {
+            await Promise.all(removals);
+          }
+        }
+      }
+    } catch (innerErr) {
+      console.warn('[Firebase] Warning khi dọn node games tổng:', innerErr);
+    }
+
     return true;
   } catch (error: any) {
-    console.error('[Firebase] Lỗi xóa game trên cloud:', error);
-    throw error;
+    console.warn('[Firebase] Lỗi xóa game trên cloud:', error?.message || error);
+    return false;
   }
 }
 
@@ -164,25 +195,30 @@ export async function saveScoreToCloud(entry: LeaderboardEntry): Promise<boolean
 
 /**
  * Đẩy toàn bộ danh sách game từ máy (localStorage) lên Firebase Realtime Database
- * Dùng khi cô giáo muốn đưa các đề đã tạo hôm qua từ máy lên public cho toàn bộ học sinh
+ * Thay thế chuẩn toàn bộ cây `games` để các game đã xóa ở máy không bị sót lại trên Cloud
  */
 export async function pushAllLocalGamesToCloud(localGames: GameQuiz[]): Promise<{
   success: boolean;
   count: number;
   error?: string;
 }> {
-  if (!localGames || localGames.length === 0) {
-    return { success: true, count: 0 };
-  }
-
   try {
-    const updates: Record<string, GameQuiz> = {};
+    const gamesRef = ref(database, 'games');
+
+    if (!localGames || localGames.length === 0) {
+      await set(gamesRef, {});
+      return { success: true, count: 0 };
+    }
+
+    const gamesDict: Record<string, GameQuiz> = {};
     localGames.forEach((game) => {
-      updates[`games/${game.id}`] = game;
+      if (game && game.id) {
+        gamesDict[game.id] = game;
+      }
     });
 
-    const rootRef = ref(database);
-    await update(rootRef, updates);
+    // Dùng set() trên node 'games' để đồng bộ chính xác và loại bỏ triệt để các game đã xóa
+    await set(gamesRef, gamesDict);
 
     return { success: true, count: localGames.length };
   } catch (error: any) {

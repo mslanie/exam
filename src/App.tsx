@@ -27,7 +27,10 @@ import {
   broadcastSync,
   subscribeToSync,
   mergeGamesWithLocal,
-  mergeLeaderboardWithLocal
+  mergeLeaderboardWithLocal,
+  getDeletedGameIds,
+  markGameAsDeleted,
+  unmarkGameAsDeleted
 } from './utils/syncUtils';
 
 export default function App() {
@@ -109,17 +112,24 @@ export default function App() {
     localStorage.setItem('mslanie_gemini_key', key);
   };
 
-  // Games & Leaderboard State
+  // Global Toast Notification State
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Games & Leaderboard State (strictly excludes deleted games)
   const [games, setGames] = useState<GameQuiz[]>(() => {
     const savedGames = localStorage.getItem('mslanie_games');
+    const deletedIds = getDeletedGameIds();
     if (savedGames) {
       try {
-        return JSON.parse(savedGames);
+        const parsed = JSON.parse(savedGames);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((g) => g && g.id && !deletedIds.has(g.id));
+        }
       } catch (e) {
         // fallback
       }
     }
-    return INITIAL_GAMES;
+    return INITIAL_GAMES.filter((g) => g && g.id && !deletedIds.has(g.id));
   });
 
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(() => {
@@ -155,10 +165,24 @@ export default function App() {
             }
           })();
 
-          const { merged, shouldPushToCloud, gamesToPush } = mergeGamesWithLocal(
+          const {
+            merged,
+            shouldPushToCloud,
+            gamesToPush,
+            deletedToPurgeFromCloud
+          } = mergeGamesWithLocal(
             localFromStorage || currentLocalGames,
             cloudGames || []
           );
+
+          // If there are deleted games still residing on cloud, purge them from cloud in background
+          if (deletedToPurgeFromCloud && deletedToPurgeFromCloud.length > 0) {
+            deletedToPurgeFromCloud.forEach((delId) => {
+              deleteGameFromCloud(delId).catch((err) =>
+                console.warn('[Firebase] Auto-purge deleted game error:', err)
+              );
+            });
+          }
 
           // Save merged result to localStorage immediately so F5 never loses newer changes
           try {
@@ -234,8 +258,12 @@ export default function App() {
   useEffect(() => {
     // 1. Listen to BroadcastChannel for real-time instant cross-tab updates
     const unsubSync = subscribeToSync((msg) => {
+      const deletedIds = getDeletedGameIds();
       if (msg.type === 'GAMES_UPDATED' && Array.isArray(msg.payload)) {
-        setGames(msg.payload);
+        setGames(msg.payload.filter((g) => g && g.id && !deletedIds.has(g.id)));
+      } else if (msg.type === 'GAME_DELETED' && typeof msg.payload === 'string') {
+        const deletedId = msg.payload;
+        setGames((prev) => prev.filter((g) => g.id !== deletedId));
       } else if (msg.type === 'LEADERBOARD_UPDATED' && Array.isArray(msg.payload)) {
         setLeaderboard(msg.payload);
       } else if (msg.type === 'AUTH_UPDATED') {
@@ -245,13 +273,16 @@ export default function App() {
 
     // 2. Listen to storage event for universal cross-tab sync fallback
     const handleStorageChange = (e: StorageEvent) => {
+      const deletedIds = getDeletedGameIds();
       if (e.key === 'mslanie_games' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
           if (Array.isArray(parsed)) {
-            setGames(parsed);
+            setGames(parsed.filter((g) => g && g.id && !deletedIds.has(g.id)));
           }
         } catch (err) {}
+      } else if (e.key === 'mslanie_deleted_game_ids' && e.newValue) {
+        setGames((prev) => prev.filter((g) => g && g.id && !deletedIds.has(g.id)));
       } else if (e.key === 'mslanie_leaderboard' && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
@@ -422,26 +453,37 @@ export default function App() {
     );
   };
 
-  // Delete Game with popup confirm
+  // Delete Game with popup confirm (permanently removes from local & cloud, immune to F5 resurrection)
   const handleDeleteGame = (gameId: string) => {
     const targetGame = games.find((g) => g.id === gameId);
     if (!targetGame) return;
 
     requestConfirm(
       'Xác Nhận Xóa Trò Chơi',
-      `Bạn có chắc chắn muốn XÓA VĨNH VIỄN trò chơi "${targetGame.title}" không? Dữ liệu này không thể hoàn tác.`,
+      `Bạn có chắc chắn muốn XÓA VĨNH VIỄN trò chơi "${targetGame.title}" không? Trò chơi sẽ bị gỡ bỏ ngay lập tức và không bao giờ xuất hiện lại sau khi F5.`,
       () => {
+        // 1. Ghi nhận vĩnh viễn vào danh sách đã xóa (Tombstone)
+        markGameAsDeleted(gameId);
+
+        // 2. Lọc bỏ ngay khỏi giao diện và bộ nhớ máy
         setGames((prev) => {
           const nextGames = prev.filter((g) => g.id !== gameId);
           try {
             localStorage.setItem('mslanie_games', JSON.stringify(nextGames));
           } catch (e) {}
           broadcastSync({ type: 'GAMES_UPDATED', payload: nextGames });
+          broadcastSync({ type: 'GAME_DELETED', payload: gameId });
           return nextGames;
         });
+
+        // 3. Xóa triệt để trên Firebase Realtime Database
         deleteGameFromCloud(gameId).catch((err) => {
           console.warn('[Firebase] Lỗi xóa game trên cloud:', err);
         });
+
+        // 4. Thông báo nổi trên màn hình
+        setToastMessage(`Đã xóa vĩnh viễn trò chơi "${targetGame.title}" thành công.`);
+        setTimeout(() => setToastMessage(null), 4000);
       },
       true,
       'Xóa Vĩnh Viễn'
@@ -450,6 +492,9 @@ export default function App() {
 
   // Save / Update Game (called from Modal & Scanner)
   const handleSaveGame = (savedGame: GameQuiz) => {
+    // Nếu game này trước đó từng có ID bị xóa, gỡ cờ xóa
+    unmarkGameAsDeleted(savedGame.id);
+
     const gameWithTimestamp: GameQuiz = {
       ...savedGame,
       updatedAt: Date.now()
@@ -870,6 +915,20 @@ export default function App() {
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
       />
+
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-[70] max-w-md bg-stone-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-stone-700/60 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 animate-pulse"></span>
+          <p className="text-xs font-semibold leading-relaxed flex-1">{toastMessage}</p>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="text-stone-400 hover:text-white p-1 text-xs cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

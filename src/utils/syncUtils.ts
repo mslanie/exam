@@ -4,6 +4,7 @@ export const SYNC_CHANNEL_NAME = 'mslanie_sync_channel';
 
 export type SyncMessage =
   | { type: 'GAMES_UPDATED'; payload: GameQuiz[] }
+  | { type: 'GAME_DELETED'; payload: string }
   | { type: 'LEADERBOARD_UPDATED'; payload: LeaderboardEntry[] }
   | { type: 'AUTH_UPDATED'; payload: boolean };
 
@@ -48,10 +49,45 @@ export function subscribeToSync(handler: (msg: SyncMessage) => void): () => void
   };
 }
 
+export const DELETED_GAMES_STORAGE_KEY = 'mslanie_deleted_game_ids';
+
+export function getDeletedGameIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(DELETED_GAMES_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+export function markGameAsDeleted(gameId: string): void {
+  if (typeof window === 'undefined' || !gameId) return;
+  try {
+    const set = getDeletedGameIds();
+    set.add(gameId);
+    localStorage.setItem(DELETED_GAMES_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {}
+}
+
+export function unmarkGameAsDeleted(gameId: string): void {
+  if (typeof window === 'undefined' || !gameId) return;
+  try {
+    const set = getDeletedGameIds();
+    if (set.has(gameId)) {
+      set.delete(gameId);
+      localStorage.setItem(DELETED_GAMES_STORAGE_KEY, JSON.stringify(Array.from(set)));
+    }
+  } catch (e) {}
+}
+
 /**
  * Intelligently merge local and cloud games:
  * Preserves newer local edits so they NEVER get reverted on page refresh (F5).
- * Detects games that need to be pushed back to cloud.
+ * Strictly honors deleted games so deleted items are NEVER resurrected.
+ * Detects games that need to be pushed back to cloud or purged from cloud.
  */
 export function mergeGamesWithLocal(
   localGames: GameQuiz[],
@@ -60,37 +96,60 @@ export function mergeGamesWithLocal(
   merged: GameQuiz[];
   shouldPushToCloud: boolean;
   gamesToPush: GameQuiz[];
+  deletedToPurgeFromCloud: string[];
 } {
-  // If cloud has no games, retain all local games and mark them to push to cloud
-  if (!cloudGames || cloudGames.length === 0) {
+  const deletedIds = getDeletedGameIds();
+
+  // 1. Filter out deleted games from local and cloud datasets
+  const cleanLocal = (localGames || []).filter(
+    (g) => g && g.id && !deletedIds.has(g.id)
+  );
+  const cleanCloud = (cloudGames || []).filter(
+    (g) => g && g.id && !deletedIds.has(g.id)
+  );
+
+  // Identify any games lingering in cloud that were deleted by the teacher
+  const deletedToPurgeFromCloud: string[] = [];
+  if (cloudGames && cloudGames.length > 0) {
+    for (const cg of cloudGames) {
+      if (cg && cg.id && deletedIds.has(cg.id)) {
+        deletedToPurgeFromCloud.push(cg.id);
+      }
+    }
+  }
+
+  // If cloud has no clean games, retain clean local games
+  if (!cleanCloud || cleanCloud.length === 0) {
     return {
-      merged: localGames || [],
-      shouldPushToCloud: (localGames || []).length > 0,
-      gamesToPush: localGames || []
+      merged: cleanLocal,
+      shouldPushToCloud: cleanLocal.length > 0,
+      gamesToPush: cleanLocal,
+      deletedToPurgeFromCloud
     };
   }
 
-  // If local has no games, use cloud games
-  if (!localGames || localGames.length === 0) {
+  // If local has no clean games, use clean cloud games
+  if (!cleanLocal || cleanLocal.length === 0) {
     return {
-      merged: cloudGames,
+      merged: cleanCloud,
       shouldPushToCloud: false,
-      gamesToPush: []
+      gamesToPush: [],
+      deletedToPurgeFromCloud
     };
   }
 
   const map = new Map<string, GameQuiz>();
   const gamesToPush: GameQuiz[] = [];
 
-  // 1. Load all local games into map
-  for (const localG of localGames) {
+  // Load all clean local games into map
+  for (const localG of cleanLocal) {
     if (localG && localG.id) {
       map.set(localG.id, localG);
     }
   }
 
-  // 2. Compare each cloud game with local
-  for (const cloudG of cloudGames) {
+  // Compare each clean cloud game with local
+  for (const cloudG of cleanCloud) {
     if (!cloudG || !cloudG.id) continue;
 
     const localG = map.get(cloudG.id);
@@ -111,7 +170,6 @@ export function mergeGamesWithLocal(
         gamesToPush.push(localG);
       } else {
         // Equal timestamps or neither has updatedAt
-        // Keep the one with more questions or keep local if modified
         const localQCount = localG.questions?.length || 0;
         const cloudQCount = cloudG.questions?.length || 0;
         if (localQCount >= cloudQCount) {
@@ -123,9 +181,9 @@ export function mergeGamesWithLocal(
     }
   }
 
-  // 3. Check for locally created games not present in cloud
-  for (const localG of localGames) {
-    if (!cloudGames.some((cg) => cg && cg.id === localG.id)) {
+  // Check for clean locally created games not present in cloud
+  for (const localG of cleanLocal) {
+    if (!cleanCloud.some((cg) => cg && cg.id === localG.id)) {
       gamesToPush.push(localG);
     }
   }
@@ -139,7 +197,8 @@ export function mergeGamesWithLocal(
   return {
     merged,
     shouldPushToCloud: gamesToPush.length > 0,
-    gamesToPush
+    gamesToPush,
+    deletedToPurgeFromCloud
   };
 }
 
