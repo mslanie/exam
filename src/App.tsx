@@ -141,7 +141,20 @@ export default function App() {
         if (cloudGames && cloudGames.length > 0) {
           setGames(cloudGames);
         } else if (isInitialMount) {
-          // If cloud has no games yet, but we have local games saved from yesterday, keep local games
+          // If cloud has no games yet, auto-push local games so students have access immediately
+          const savedGames = localStorage.getItem('mslanie_games');
+          if (savedGames) {
+            try {
+              const parsed = JSON.parse(savedGames);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                pushAllLocalGamesToCloud(parsed).catch((e) =>
+                  console.warn('[Firebase] Initial auto-push note:', e?.message)
+                );
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
         }
         isInitialMount = false;
         setCloudStatus('connected');

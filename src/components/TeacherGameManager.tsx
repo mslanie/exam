@@ -196,8 +196,8 @@ export const TeacherGameManager: React.FC<TeacherGameManagerProps> = ({
                 Rule Firebase của cô hiện đang khóa <code className="bg-rose-100 px-1 py-0.5 rounded font-mono">.read: false</code>. Học sinh trên điện thoại khác sẽ KHÔNG THẤY ĐỀ. Bấm nút "Sửa Rule Chuẩn" bên phải để mở khóa ngay!
               </span>
             ) : cloudStatus === 'connected' ? (
-              <span className="text-stone-600">
-                Tất cả {games.filter((g) => g.isPublished).length} đề thi đang mở sẽ tự động xuất hiện trên điện thoại và máy tính của học sinh ngay lập tức.
+              <span className="text-emerald-800 font-medium">
+                ✅ <strong>Tự động đồng bộ bật:</strong> Mọi đề thi cô tạo mới hoặc sửa sẽ tự động lưu và xuất hiện cho học sinh ngay lập tức mà cô không cần bấm nút đẩy lên cloud.
               </span>
             ) : (
               <span className="text-stone-600">
@@ -208,15 +208,20 @@ export const TeacherGameManager: React.FC<TeacherGameManagerProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>Tự Động Lưu Cloud</span>
+          </div>
+
           {onSyncAllToCloud && (
             <button
               onClick={onSyncAllToCloud}
               disabled={isSyncingCloud}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Đẩy tất cả đề thi có trên máy lên Firebase Cloud để học sinh trên máy khác vào làm được ngay"
+              className="px-3.5 py-2 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 text-stone-700 font-bold text-xs rounded-xl border border-stone-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Đồng bộ lại tất cả đề thi có trên máy lên Firebase Cloud nếu có đề bị sót"
             >
-              <CloudUpload className={`w-4 h-4 ${isSyncingCloud ? 'animate-bounce' : ''}`} />
-              <span>{isSyncingCloud ? 'Đang đẩy lên...' : '☁️ Đẩy toàn bộ đề lên Cloud'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+              <span>{isSyncingCloud ? 'Đang kiểm tra...' : 'Đồng bộ lại tất cả'}</span>
             </button>
           )}
 

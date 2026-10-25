@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Key, CheckCircle2, ShieldCheck, AlertCircle, Save, ExternalLink } from 'lucide-react';
 
+import { testGeminiApiKey } from '../utils/geminiService';
+
 interface GeminiKeyTabProps {
   apiKey: string;
   onSaveApiKey: (key: string) => void;
@@ -49,32 +51,12 @@ export const GeminiKeyTab: React.FC<GeminiKeyTabProps> = ({
     setTestResult(null);
 
     try {
-      const response = await fetch('/api/scan-document', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: inputKey.trim(),
-          testOnly: true,
-          text: 'Ms. Lanie teaches English effectively.'
-        })
-      });
-
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setTestResult({
-          success: true,
-          message: 'Kết nối thành công! AI Gemini đã sẵn sàng quét mọi loại tài liệu.'
-        });
-      } else {
-        setTestResult({
-          success: false,
-          message: data.error || 'API Key không hợp lệ hoặc không có quyền truy cập Gemini API.'
-        });
-      }
+      const res = await testGeminiApiKey(inputKey.trim());
+      setTestResult(res);
     } catch (e: any) {
       setTestResult({
         success: false,
-        message: 'Lỗi kết nối máy chủ AI: ' + (e?.message || 'Vui lòng thử lại!')
+        message: 'Lỗi kết nối AI: ' + (e?.message || 'Vui lòng thử lại!')
       });
     } finally {
       setIsTesting(false);

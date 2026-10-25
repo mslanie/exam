@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GameQuiz, LeaderboardEntry, QuestionResultDetail } from '../types';
 import { validateGamePassword } from '../utils/passwordUtils';
+import { normalizeBlankSentence, BLANK_REGEX } from '../utils/geminiService';
 import {
   X,
   Clock,
@@ -207,7 +208,7 @@ export const StudentGamePlay: React.FC<StudentGamePlayProps> = ({
 
       return {
         questionId: q.id,
-        sentence: q.sentence,
+        sentence: normalizeBlankSentence(q.sentence),
         studentAnswer: displayStudentAns,
         correctAnswer: correctAns,
         isCorrect,
@@ -472,7 +473,7 @@ export const StudentGamePlay: React.FC<StudentGamePlayProps> = ({
 
         return {
           questionId: q.id,
-          sentence: q.sentence,
+          sentence: normalizeBlankSentence(q.sentence),
           studentAnswer: studentAns || '(Bỏ trống)',
           correctAnswer: correctAns,
           isCorrect,
@@ -748,7 +749,7 @@ export const StudentGamePlay: React.FC<StudentGamePlayProps> = ({
 
       return {
         questionId: q.id,
-        sentence: q.sentence,
+        sentence: normalizeBlankSentence(q.sentence),
         studentAnswer: studentAns || '(Bỏ trống)',
         correctAnswer: correctAns,
         isCorrect,
@@ -1264,7 +1265,7 @@ export const StudentGamePlay: React.FC<StudentGamePlayProps> = ({
   }
 
   // 4. ACTIVE GAMEPLAY QUESTION VIEW
-  const parts = currentQuestion.sentence.split('[blank]');
+  const parts = currentQuestion.sentence.split(BLANK_REGEX);
   const progressPercent = Math.round(((currentIndex + 1) / questionsList.length) * 100);
 
   return (
@@ -1386,7 +1387,26 @@ export const StudentGamePlay: React.FC<StudentGamePlayProps> = ({
             <div className="text-base sm:text-lg md:text-xl font-bold text-stone-800 leading-relaxed sm:leading-loose flex flex-wrap items-center gap-2">
               {parts.map((part, idx) => (
                 <React.Fragment key={idx}>
-                  <span>{part}</span>
+                  <span>
+                    {part.split(/(\*\*[^*]+?\*\*|<(?:b|strong)[^>]*>[\s\S]+?<\/(?:b|strong)>)/g).map((seg, sIdx) => {
+                      if (seg.startsWith('**') && seg.endsWith('**')) {
+                        return (
+                          <strong key={sIdx} className="font-extrabold text-stone-900">
+                            {seg.slice(2, -2)}
+                          </strong>
+                        );
+                      }
+                      const bMatch = seg.match(/<(?:b|strong)[^>]*>([\s\S]+?)<\/(?:b|strong)>/i);
+                      if (bMatch) {
+                        return (
+                          <strong key={sIdx} className="font-extrabold text-stone-900">
+                            {bMatch[1]}
+                          </strong>
+                        );
+                      }
+                      return <React.Fragment key={sIdx}>{seg}</React.Fragment>;
+                    })}
+                  </span>
                   {idx < currentQuestion.blanks.length && (
                     <span className="inline-block relative my-1">
                       <input

@@ -14,7 +14,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
     questions: [
       {
         id: 'q1',
-        sentence: 'It is widely believed that technology has a profound [blank] on modern educational paradigms.',
+        sentence: 'It is widely believed that technology has a profound _______ on modern educational paradigms.',
         blanks: [
           { id: 'b1', correctAnswer: 'impact', acceptableAnswers: ['effect', 'influence'], hint: 'Từ bắt đầu bằng chữ "i", nghĩa là tác động' }
         ],
@@ -23,7 +23,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
       },
       {
         id: 'q2',
-        sentence: 'Governments should allocate more financial [blank] to public healthcare and infrastructure.',
+        sentence: 'Governments should allocate more financial _______ to public healthcare and infrastructure.',
         blanks: [
           { id: 'b2', correctAnswer: 'resources', acceptableAnswers: ['funds', 'funding'], hint: 'Nguồn lực tài chính' }
         ],
@@ -32,7 +32,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
       },
       {
         id: 'q3',
-        sentence: 'One effective measure to [blank] traffic congestion is expanding public transport networks.',
+        sentence: 'One effective measure to _______ traffic congestion is expanding public transport networks.',
         blanks: [
           { id: 'b3', correctAnswer: 'alleviate', acceptableAnswers: ['mitigate', 'reduce'], hint: 'Bắt đầu bằng "al...", có nghĩa là giảm nhẹ' }
         ],
@@ -41,7 +41,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
       },
       {
         id: 'q4',
-        sentence: 'There is a growing [blank] among young graduates to pursue remote freelancing careers.',
+        sentence: 'There is a growing _______ among young graduates to pursue remote freelancing careers.',
         blanks: [
           { id: 'b4', correctAnswer: 'tendency', acceptableAnswers: ['trend', 'inclination'], hint: 'Xu hướng / khuynh hướng' }
         ],
@@ -64,7 +64,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
     questions: [
       {
         id: 'gt1',
-        sentence: 'By the time Ms. Lanie arrived at the classroom, the students [blank] their assignments.',
+        sentence: 'By the time Ms. Lanie arrived at the classroom, the students _______ their assignments.',
         blanks: [
           { id: 'gb1', correctAnswer: 'had finished', acceptableAnswers: ['had completed'], hint: 'Thì quá khứ hoàn thành (had + V3)' }
         ],
@@ -73,7 +73,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
       },
       {
         id: 'gt2',
-        sentence: 'A new English learning center [blank] built in the city center next month.',
+        sentence: 'A new English learning center _______ built in the city center next month.',
         blanks: [
           { id: 'gb2', correctAnswer: 'will be', acceptableAnswers: ['is going to be'], hint: 'Bị động tương lai đơn (will be + V3)' }
         ],
@@ -82,7 +82,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
       },
       {
         id: 'gt3',
-        sentence: 'If I [blank] more time last weekend, I would have joined the Speaking Club.',
+        sentence: 'If I _______ more time last weekend, I would have joined the Speaking Club.',
         blanks: [
           { id: 'gb3', correctAnswer: 'had had', acceptableAnswers: [], hint: 'Câu điều kiện loại 3 (had + V3)' }
         ],
@@ -105,7 +105,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
     questions: [
       {
         id: 'p1',
-        sentence: 'She prides herself [blank] speaking three foreign languages fluently.',
+        sentence: 'She prides herself _______ speaking three foreign languages fluently.',
         blanks: [
           { id: 'pb1', correctAnswer: 'on', acceptableAnswers: [], hint: 'Pride oneself ON something' }
         ],
@@ -114,7 +114,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
       },
       {
         id: 'p2',
-        sentence: 'Never give [blank] on your dreams, even when facing difficult challenges.',
+        sentence: 'Never give _______ on your dreams, even when facing difficult challenges.',
         blanks: [
           { id: 'pb2', correctAnswer: 'up', acceptableAnswers: [], hint: 'Give UP = từ bỏ' }
         ],
@@ -123,7 +123,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
       },
       {
         id: 'p3',
-        sentence: 'The teacher called [blank] the student to answer the reading comprehension question.',
+        sentence: 'The teacher called _______ the student to answer the reading comprehension question.',
         blanks: [
           { id: 'pb3', correctAnswer: 'on', acceptableAnswers: ['upon'], hint: 'Call ON someone' }
         ],

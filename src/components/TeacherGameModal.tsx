@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GameQuiz, Question, PasswordType } from '../types';
 import { getDynamicPin } from '../utils/passwordUtils';
+import { normalizeBlankSentence } from '../utils/geminiService';
 import { X, Plus, Trash2, RefreshCw, Clock, Zap, KeyRound, Shield, Check } from 'lucide-react';
 
 interface TeacherGameModalProps {
@@ -30,7 +31,7 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
   const [questions, setQuestions] = useState<Question[]>([
     {
       id: 'q_1',
-      sentence: 'Learning English requires consistent [blank] every day.',
+      sentence: 'Learning English requires consistent _______ every day.',
       blanks: [
         { id: 'b_1', correctAnswer: 'practice' }
       ],
@@ -50,7 +51,12 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
       setPasswordValue(gameToEdit.passwordValue || 'LANIE123');
       setDynamicInterval(gameToEdit.dynamicInterval || 30);
       setTimePerQuestion(gameToEdit.timePerQuestion);
-      setQuestions(gameToEdit.questions);
+      setQuestions(
+        gameToEdit.questions.map((q) => ({
+          ...q,
+          sentence: normalizeBlankSentence(q.sentence)
+        }))
+      );
     } else {
       setTitle('');
       setDescription('');
@@ -63,7 +69,7 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
       setQuestions([
         {
           id: `q_${Date.now()}`,
-          sentence: 'Learning English requires consistent [blank] every day.',
+          sentence: 'Learning English requires consistent _______ every day.',
           blanks: [
             { id: `b_${Date.now()}`, correctAnswer: 'practice' }
           ],
@@ -80,7 +86,7 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
   const handleAddQuestion = () => {
     const newQ: Question = {
       id: `q_${Date.now()}`,
-      sentence: 'Ms. Lanie helps students master [blank] skills effectively.',
+      sentence: 'Ms. Lanie helps students master _______ skills effectively.',
       blanks: [{ id: `b_${Date.now()}`, correctAnswer: 'English' }],
       options: ['English', 'Math', 'Science'],
       explanation: '',
@@ -96,7 +102,11 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
 
   const handleQuestionChange = (idx: number, field: keyof Question, value: any) => {
     const updated = [...questions];
-    updated[idx] = { ...updated[idx], [field]: value };
+    if (field === 'sentence' && typeof value === 'string') {
+      updated[idx] = { ...updated[idx], sentence: normalizeBlankSentence(value) };
+    } else {
+      updated[idx] = { ...updated[idx], [field]: value };
+    }
     setQuestions(updated);
   };
 
@@ -397,7 +407,7 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
             </div>
 
             <p className="text-[11px] text-stone-500">
-              💡 Dùng ký tự <code className="bg-stone-200 px-1 py-0.5 rounded font-mono text-indigo-800">[blank]</code> vào vị trí ẩn từ vựng trong đề bài.
+              💡 Dùng ký tự <code className="bg-stone-200 px-1 py-0.5 rounded font-mono text-indigo-800">_______</code> (dấu gạch dưới) vào vị trí ẩn từ vựng trong đề bài.
             </p>
 
             <div className="space-y-4">
@@ -425,13 +435,13 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
 
                   <div>
                     <label className="text-[11px] font-semibold text-stone-600 block mb-1">
-                      Câu văn (Chứa [blank])
+                      Câu văn (Chứa _______)
                     </label>
                     <input
                       type="text"
                       value={q.sentence}
                       onChange={(e) => handleQuestionChange(idx, 'sentence', e.target.value)}
-                      placeholder="VD: She [blank] to the library every Sunday."
+                      placeholder="VD: Three teens are going to share about how they feel about living in their city and how to make it a more _______ place."
                       required
                       className="w-full text-xs font-medium p-2.5 rounded-lg border border-stone-300 bg-white text-stone-900"
                     />
