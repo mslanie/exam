@@ -91,7 +91,8 @@ export function unmarkGameAsDeleted(gameId: string): void {
  */
 export function mergeGamesWithLocal(
   localGames: GameQuiz[],
-  cloudGames: GameQuiz[]
+  cloudGames: GameQuiz[],
+  isFreshClient: boolean = false
 ): {
   merged: GameQuiz[];
   shouldPushToCloud: boolean;
@@ -118,18 +119,10 @@ export function mergeGamesWithLocal(
     }
   }
 
-  // If cloud has no clean games, retain clean local games
-  if (!cleanCloud || cleanCloud.length === 0) {
-    return {
-      merged: cleanLocal,
-      shouldPushToCloud: cleanLocal.length > 0,
-      gamesToPush: cleanLocal,
-      deletedToPurgeFromCloud
-    };
-  }
-
-  // If local has no clean games, use clean cloud games
-  if (!cleanLocal || cleanLocal.length === 0) {
+  // 2. If this is a fresh client (e.g. Incognito mode, new browser, student device without prior localStorage):
+  // They MUST strictly adopt Cloud games directly as the single source of truth!
+  // No mock INITIAL_GAMES should ever be revived, and nothing should be pushed to Cloud.
+  if (isFreshClient) {
     return {
       merged: cleanCloud,
       shouldPushToCloud: false,
@@ -138,54 +131,51 @@ export function mergeGamesWithLocal(
     };
   }
 
+  // 3. If cloud is empty (e.g. all games were deleted by teacher on Cloud):
+  // Only keep local games that were freshly created offline; wipe any old deleted games.
+  if (!cleanCloud || cleanCloud.length === 0) {
+    const offlineCreated = cleanLocal.filter((g) => g._isOfflineCreated);
+    return {
+      merged: offlineCreated,
+      shouldPushToCloud: offlineCreated.length > 0,
+      gamesToPush: offlineCreated,
+      deletedToPurgeFromCloud
+    };
+  }
+
+  // 4. Cloud has games: Cloud is authoritative for active game IDs!
   const map = new Map<string, GameQuiz>();
   const gamesToPush: GameQuiz[] = [];
 
-  // Load all clean local games into map
-  for (const localG of cleanLocal) {
-    if (localG && localG.id) {
-      map.set(localG.id, localG);
+  // Initialize map with clean cloud games
+  for (const cloudG of cleanCloud) {
+    if (cloudG && cloudG.id) {
+      map.set(cloudG.id, cloudG);
     }
   }
 
-  // Compare each clean cloud game with local
-  for (const cloudG of cleanCloud) {
-    if (!cloudG || !cloudG.id) continue;
+  // Compare with clean local games
+  for (const localG of cleanLocal) {
+    if (!localG || !localG.id) continue;
 
-    const localG = map.get(cloudG.id);
-    if (!localG) {
-      // Cloud game doesn't exist locally -> add it
-      map.set(cloudG.id, cloudG);
-    } else {
-      // Game exists in both local and cloud!
+    const cloudG = map.get(localG.id);
+    if (cloudG) {
+      // Game exists in both: preserve newer local edits
       const localTime = localG.updatedAt || 0;
       const cloudTime = cloudG.updatedAt || 0;
 
-      if (cloudTime > localTime) {
-        // Cloud has a strictly newer version
-        map.set(cloudG.id, cloudG);
-      } else if (localTime > cloudTime) {
-        // Local has a strictly newer version! Keep local edits!
+      if (localTime > cloudTime) {
         map.set(localG.id, localG);
         gamesToPush.push(localG);
-      } else {
-        // Equal timestamps or neither has updatedAt
-        const localQCount = localG.questions?.length || 0;
-        const cloudQCount = cloudG.questions?.length || 0;
-        if (localQCount >= cloudQCount) {
-          map.set(localG.id, localG);
-        } else {
-          map.set(cloudG.id, cloudG);
-        }
       }
-    }
-  }
-
-  // Check for clean locally created games not present in cloud
-  for (const localG of cleanLocal) {
-    if (!cleanCloud.some((cg) => cg && cg.id === localG.id)) {
+    } else if (localG._isOfflineCreated) {
+      // Newly created offline game that hasn't been uploaded yet
+      map.set(localG.id, localG);
       gamesToPush.push(localG);
     }
+    // CRITICAL: If localG is absent from cloud and NOT _isOfflineCreated,
+    // IT WAS DELETED FROM CLOUD by the teacher on another device or session!
+    // We do NOT add it back to map, and do NOT push to cloud! It remains deleted!
   }
 
   const merged = Array.from(map.values()).sort((a, b) => {

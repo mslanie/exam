@@ -34,6 +34,7 @@ export interface GameQuiz {
   questions: Question[];
   createdAt: string;
   updatedAt?: number; // Epoch timestamp in ms for precise synchronization & conflict resolution
+  _isOfflineCreated?: boolean; // Flag to indicate games created offline that need sync
   totalPlays: number;
 }
 

@@ -129,7 +129,10 @@ export default function App() {
         // fallback
       }
     }
-    return INITIAL_GAMES.filter((g) => g && g.id && !deletedIds.has(g.id));
+    // Đối với trình duyệt mới / chế độ Ẩn danh (Incognito), bắt đầu từ danh sách rỗng []
+    // để KHÔNG nạp lại các đề mẫu đã bị cô giáo xóa. Firebase Realtime Database
+    // sẽ trả về danh sách các đề đang hoạt động thực tế trên Cloud trong chưa đầy 0.2s.
+    return [];
   });
 
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(() => {
@@ -155,6 +158,8 @@ export default function App() {
     const unsubGames = listenToCloudGames(
       (cloudGames) => {
         setGames((currentLocalGames) => {
+          const isFreshClient = !localStorage.getItem('mslanie_games');
+
           // Fetch current persisted games from localStorage
           const localFromStorage = (() => {
             try {
@@ -172,7 +177,8 @@ export default function App() {
             deletedToPurgeFromCloud
           } = mergeGamesWithLocal(
             localFromStorage || currentLocalGames,
-            cloudGames || []
+            cloudGames || [],
+            isFreshClient
           );
 
           // If there are deleted games still residing on cloud, purge them from cloud in background
@@ -189,8 +195,8 @@ export default function App() {
             localStorage.setItem('mslanie_games', JSON.stringify(merged));
           } catch (e) {}
 
-          // If local has newer edits that cloud lacks, push them to cloud in background
-          if ((shouldPushToCloud && gamesToPush.length > 0) || (isInitialMount && (!cloudGames || cloudGames.length === 0))) {
+          // Chỉ cho phép đẩy lên Cloud nếu có giáo viên đăng nhập và có bài tạo mới cần đồng bộ
+          if (!isFreshClient && isTeacherAuthenticated && shouldPushToCloud && gamesToPush.length > 0) {
             pushAllLocalGamesToCloud(merged).catch((e) =>
               console.warn('[Firebase] Auto-sync to cloud note:', e?.message)
             );
@@ -466,19 +472,22 @@ export default function App() {
         markGameAsDeleted(gameId);
 
         // 2. Lọc bỏ ngay khỏi giao diện và bộ nhớ máy
-        setGames((prev) => {
-          const nextGames = prev.filter((g) => g.id !== gameId);
-          try {
-            localStorage.setItem('mslanie_games', JSON.stringify(nextGames));
-          } catch (e) {}
-          broadcastSync({ type: 'GAMES_UPDATED', payload: nextGames });
-          broadcastSync({ type: 'GAME_DELETED', payload: gameId });
-          return nextGames;
-        });
+        const nextGames = games.filter((g) => g.id !== gameId);
+        setGames(nextGames);
+        try {
+          localStorage.setItem('mslanie_games', JSON.stringify(nextGames));
+        } catch (e) {}
+        broadcastSync({ type: 'GAMES_UPDATED', payload: nextGames });
+        broadcastSync({ type: 'GAME_DELETED', payload: gameId });
 
         // 3. Xóa triệt để trên Firebase Realtime Database
+        // Gọi cả deleteGameFromCloud VÀ pushAllLocalGamesToCloud(nextGames)
+        // để ghi đè sạch node 'games' trên Cloud, bảo đảm máy khác hay ẩn danh không bao giờ thấy lại
         deleteGameFromCloud(gameId).catch((err) => {
           console.warn('[Firebase] Lỗi xóa game trên cloud:', err);
+        });
+        pushAllLocalGamesToCloud(nextGames).catch((err) => {
+          console.warn('[Firebase] Lỗi cập nhật danh sách sau xóa:', err);
         });
 
         // 4. Thông báo nổi trên màn hình
