@@ -33,6 +33,7 @@ export interface GameQuiz {
   timePerQuestion: number; // Default time per question in seconds
   questions: Question[];
   createdAt: string;
+  updatedAt?: number; // Epoch timestamp in ms for precise synchronization & conflict resolution
   totalPlays: number;
 }
 

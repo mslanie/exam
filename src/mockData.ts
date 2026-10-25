@@ -10,6 +10,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
     passwordType: 'none',
     timePerQuestion: 30,
     createdAt: '21/07/2026',
+    updatedAt: 1700000000000,
     totalPlays: 148,
     questions: [
       {
@@ -60,6 +61,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
     passwordValue: 'LANIE123',
     timePerQuestion: 25,
     createdAt: '20/07/2026',
+    updatedAt: 1700000000000,
     totalPlays: 92,
     questions: [
       {
@@ -101,6 +103,7 @@ export const INITIAL_GAMES: GameQuiz[] = [
     passwordValue: '882190',
     timePerQuestion: 20,
     createdAt: '22/07/2026',
+    updatedAt: 1700000000000,
     totalPlays: 215,
     questions: [
       {

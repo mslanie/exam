@@ -121,9 +121,12 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
     setQuestions(updated);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!title.trim()) {
+      alert('Vui lòng nhập tên trò chơi');
+      return;
+    }
 
     const saved: GameQuiz = {
       id: gameToEdit ? gameToEdit.id : `game_${Date.now()}`,
@@ -137,6 +140,7 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
       timePerQuestion,
       questions,
       createdAt: gameToEdit ? gameToEdit.createdAt : new Date().toLocaleDateString('vi-VN'),
+      updatedAt: Date.now(),
       totalPlays: gameToEdit ? gameToEdit.totalPlays : 0
     };
 
@@ -164,17 +168,38 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
   return (
     <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
       <div className="bg-[#FEFDED] rounded-3xl max-w-3xl w-full border border-[#E2E0C8] shadow-2xl overflow-hidden flex flex-col max-h-[94vh] my-auto">
-        {/* Header */}
-        <div className="bg-[#FEFDED] px-4 sm:px-6 py-3.5 sm:py-4 border-b border-[#E2E0C8] flex items-center justify-between shrink-0">
-          <h3 className="font-extrabold text-stone-900 text-base sm:text-lg">
-            {gameToEdit ? 'Chỉnh Sửa Game Điền Từ' : 'Tạo Game Điền Vào Chỗ Trống Mới'}
-          </h3>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-stone-200/60 hover:bg-stone-200 flex items-center justify-center text-stone-500 cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+        {/* Header with Top Save Button */}
+        <div className="bg-[#FEFDED] px-4 sm:px-6 py-3.5 sm:py-4 border-b border-[#E2E0C8] flex items-center justify-between shrink-0 gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <h3 className="font-extrabold text-stone-900 text-base sm:text-lg truncate">
+              {gameToEdit ? 'Chỉnh Sửa Game Điền Từ' : 'Tạo Game Điền Chỗ Trống Mới'}
+            </h3>
+            <span className="text-[11px] font-bold bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200 hidden sm:inline-block shrink-0">
+              {questions.length} câu hỏi
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Top Save Button */}
+            <button
+              type="button"
+              onClick={() => handleSubmit()}
+              className="px-3 sm:px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer transition-all flex items-center gap-1.5"
+              title="Lưu game ngay mà không cần cuộn chuột xuống đáy"
+            >
+              <Check className="w-4 h-4" />
+              <span>{gameToEdit ? 'Lưu Thay Đổi' : 'Lưu Game'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-stone-200/60 hover:bg-stone-200 flex items-center justify-center text-stone-500 cursor-pointer transition-colors"
+              title="Đóng cửa sổ"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Form Body */}
@@ -489,6 +514,41 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* Options (Word bank) and Explanation */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-stone-200/60">
+                    <div>
+                      <label className="text-[11px] font-semibold text-stone-600 block mb-1">
+                        Từ gợi ý (Word Bank / Các lựa chọn, cách nhau bằng dấu phẩy)
+                      </label>
+                      <input
+                        type="text"
+                        value={(q.options || []).join(', ')}
+                        onChange={(e) => {
+                          const opts = e.target.value
+                            .split(',')
+                            .map((s) => s.trim())
+                            .filter(Boolean);
+                          handleQuestionChange(idx, 'options', opts);
+                        }}
+                        placeholder="VD: practice, sleep, money, food"
+                        className="w-full text-xs font-medium p-2.5 rounded-lg border border-stone-300 bg-white text-stone-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-stone-600 block mb-1">
+                        Giải thích đáp án (Hiển thị sau khi học sinh nộp bài)
+                      </label>
+                      <input
+                        type="text"
+                        value={q.explanation || ''}
+                        onChange={(e) => handleQuestionChange(idx, 'explanation', e.target.value)}
+                        placeholder="VD: Dùng practice để chỉ sự rèn luyện..."
+                        className="w-full text-xs font-medium p-2.5 rounded-lg border border-stone-300 bg-white text-stone-900"
+                      />
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -507,7 +567,7 @@ export const TeacherGameModal: React.FC<TeacherGameModalProps> = ({
               className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-colors flex items-center gap-1.5"
             >
               <Check className="w-4 h-4" />
-              <span>Lưu Game & Xuất Bản</span>
+              <span>{gameToEdit ? 'Lưu Thay Đổi' : 'Lưu Game & Xuất Bản'}</span>
             </button>
           </div>
         </form>

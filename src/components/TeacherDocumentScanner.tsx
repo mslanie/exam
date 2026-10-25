@@ -341,6 +341,7 @@ Ex2:
         timePerQuestion: defaultTimePerQuestion,
         questions: scannedQuestions,
         createdAt: new Date().toLocaleDateString('vi-VN'),
+        updatedAt: Date.now(),
         totalPlays: 0
       };
 
@@ -361,8 +362,8 @@ Ex2:
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Back & Title Header */}
-      <div className="flex items-center gap-3">
+      {/* Back & Title Header with Top Action */}
+      <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={onNavigateToGames}
           className="w-10 h-10 rounded-2xl bg-white border border-[#E2E0C8] shadow-xs hover:bg-stone-100 flex items-center justify-center text-stone-700 cursor-pointer transition-colors shrink-0"
@@ -371,7 +372,7 @@ Ex2:
           <ArrowLeft className="w-5 h-5" />
         </button>
 
-        <div className="flex-1">
+        <div className="flex-1 min-w-[240px]">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-black text-stone-900 tracking-tight">
               Quét Đề & Tạo Game Điền Từ Mới 🎮
@@ -386,15 +387,29 @@ Ex2:
           </p>
         </div>
 
-        {onNavigateToGeminiKeyTab && (
-          <button
-            onClick={onNavigateToGeminiKeyTab}
-            className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-xs rounded-xl cursor-pointer transition-colors flex items-center gap-1.5 shrink-0 hidden sm:flex"
-          >
-            <Key className="w-4 h-4 text-amber-600" />
-            <span>Gemini Key</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {scannedQuestions.length > 0 && (
+            <button
+              onClick={handlePublishScannedGame}
+              disabled={isSaved}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800 text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer transition-colors flex items-center gap-1.5"
+              title="Lưu và xuất bản game ngay"
+            >
+              <Check className="w-4 h-4" />
+              <span>{isSaved ? 'Đã Lưu Cloud' : 'Xuất Bản Game'}</span>
+            </button>
+          )}
+
+          {onNavigateToGeminiKeyTab && (
+            <button
+              onClick={onNavigateToGeminiKeyTab}
+              className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-xs rounded-xl cursor-pointer transition-colors flex items-center gap-1.5 hidden sm:flex"
+            >
+              <Key className="w-4 h-4 text-amber-600" />
+              <span>Gemini Key</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Top Configuration Form Bar */}

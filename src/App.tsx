@@ -23,6 +23,12 @@ import {
   pushAllLocalGamesToCloud,
   SyncStatus
 } from './utils/firebase';
+import {
+  broadcastSync,
+  subscribeToSync,
+  mergeGamesWithLocal,
+  mergeLeaderboardWithLocal
+} from './utils/syncUtils';
 
 export default function App() {
   const [role, setRole] = useState<AppRole>('student');
@@ -133,29 +139,42 @@ export default function App() {
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
-  // Real-time synchronization from Firebase Realtime Database
+  // Real-time synchronization from Firebase Realtime Database with conflict-free merge
   useEffect(() => {
     let isInitialMount = true;
     const unsubGames = listenToCloudGames(
       (cloudGames) => {
-        if (cloudGames && cloudGames.length > 0) {
-          setGames(cloudGames);
-        } else if (isInitialMount) {
-          // If cloud has no games yet, auto-push local games so students have access immediately
-          const savedGames = localStorage.getItem('mslanie_games');
-          if (savedGames) {
+        setGames((currentLocalGames) => {
+          // Fetch current persisted games from localStorage
+          const localFromStorage = (() => {
             try {
-              const parsed = JSON.parse(savedGames);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                pushAllLocalGamesToCloud(parsed).catch((e) =>
-                  console.warn('[Firebase] Initial auto-push note:', e?.message)
-                );
-              }
+              const saved = localStorage.getItem('mslanie_games');
+              return saved ? JSON.parse(saved) : currentLocalGames;
             } catch (e) {
-              // ignore
+              return currentLocalGames;
             }
+          })();
+
+          const { merged, shouldPushToCloud, gamesToPush } = mergeGamesWithLocal(
+            localFromStorage || currentLocalGames,
+            cloudGames || []
+          );
+
+          // Save merged result to localStorage immediately so F5 never loses newer changes
+          try {
+            localStorage.setItem('mslanie_games', JSON.stringify(merged));
+          } catch (e) {}
+
+          // If local has newer edits that cloud lacks, push them to cloud in background
+          if ((shouldPushToCloud && gamesToPush.length > 0) || (isInitialMount && (!cloudGames || cloudGames.length === 0))) {
+            pushAllLocalGamesToCloud(merged).catch((e) =>
+              console.warn('[Firebase] Auto-sync to cloud note:', e?.message)
+            );
           }
-        }
+
+          return merged;
+        });
+
         isInitialMount = false;
         setCloudStatus('connected');
         setLastSyncTime(new Date());
@@ -176,7 +195,21 @@ export default function App() {
     const unsubLeaderboard = listenToCloudLeaderboard(
       (cloudLb) => {
         if (cloudLb && cloudLb.length > 0) {
-          setLeaderboard(cloudLb);
+          setLeaderboard((currentLocalLb) => {
+            const localFromStorage = (() => {
+              try {
+                const saved = localStorage.getItem('mslanie_leaderboard');
+                return saved ? JSON.parse(saved) : currentLocalLb;
+              } catch (e) {
+                return currentLocalLb;
+              }
+            })();
+            const merged = mergeLeaderboardWithLocal(localFromStorage, cloudLb);
+            try {
+              localStorage.setItem('mslanie_leaderboard', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
         }
         setCloudStatus((prev) => (prev === 'permission_denied' ? 'permission_denied' : 'connected'));
       },
@@ -197,13 +230,63 @@ export default function App() {
     };
   }, []);
 
+  // Cross-tab synchronization via BroadcastChannel & storage events
+  useEffect(() => {
+    // 1. Listen to BroadcastChannel for real-time instant cross-tab updates
+    const unsubSync = subscribeToSync((msg) => {
+      if (msg.type === 'GAMES_UPDATED' && Array.isArray(msg.payload)) {
+        setGames(msg.payload);
+      } else if (msg.type === 'LEADERBOARD_UPDATED' && Array.isArray(msg.payload)) {
+        setLeaderboard(msg.payload);
+      } else if (msg.type === 'AUTH_UPDATED') {
+        setIsTeacherAuthenticated(msg.payload);
+      }
+    });
+
+    // 2. Listen to storage event for universal cross-tab sync fallback
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'mslanie_games' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setGames(parsed);
+          }
+        } catch (err) {}
+      } else if (e.key === 'mslanie_leaderboard' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setLeaderboard(parsed);
+          }
+        } catch (err) {}
+      } else if (e.key === 'isTeacherAuthenticated') {
+        setIsTeacherAuthenticated(e.newValue === 'true');
+      } else if (e.key === 'teacherCredentials' && e.newValue) {
+        try {
+          setTeacherCredentials(JSON.parse(e.newValue));
+        } catch (err) {}
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      unsubSync();
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
   // Save games & leaderboard to localStorage as reliable backup
   useEffect(() => {
-    localStorage.setItem('mslanie_games', JSON.stringify(games));
+    try {
+      localStorage.setItem('mslanie_games', JSON.stringify(games));
+    } catch (e) {}
   }, [games]);
 
   useEffect(() => {
-    localStorage.setItem('mslanie_leaderboard', JSON.stringify(leaderboard));
+    try {
+      localStorage.setItem('mslanie_leaderboard', JSON.stringify(leaderboard));
+    } catch (e) {}
   }, [leaderboard]);
 
   // Active Play State
@@ -288,9 +371,17 @@ export default function App() {
           ...targetGame,
           passwordType,
           passwordValue: passwordType === 'static' ? passwordValue : targetGame.passwordValue,
-          dynamicInterval: passwordType === 'dynamic' ? dynamicInterval : targetGame.dynamicInterval
+          dynamicInterval: passwordType === 'dynamic' ? dynamicInterval : targetGame.dynamicInterval,
+          updatedAt: Date.now()
         };
-        setGames((prev) => prev.map((g) => (g.id === gameId ? updatedGame : g)));
+        setGames((prev) => {
+          const nextGames = prev.map((g) => (g.id === gameId ? updatedGame : g));
+          try {
+            localStorage.setItem('mslanie_games', JSON.stringify(nextGames));
+          } catch (e) {}
+          broadcastSync({ type: 'GAMES_UPDATED', payload: nextGames });
+          return nextGames;
+        });
         saveGameToCloud(updatedGame).catch((err) => {
           console.warn('[Firebase] Lỗi lưu chế độ mật khẩu lên cloud:', err);
         });
@@ -311,8 +402,19 @@ export default function App() {
       'Xác Nhận Đổi Trạng Thái Game',
       `Bạn có chắc chắn muốn ${actionText} không?`,
       () => {
-        const updatedGame: GameQuiz = { ...targetGame, isPublished: !targetGame.isPublished };
-        setGames((prev) => prev.map((g) => (g.id === gameId ? updatedGame : g)));
+        const updatedGame: GameQuiz = {
+          ...targetGame,
+          isPublished: !targetGame.isPublished,
+          updatedAt: Date.now()
+        };
+        setGames((prev) => {
+          const nextGames = prev.map((g) => (g.id === gameId ? updatedGame : g));
+          try {
+            localStorage.setItem('mslanie_games', JSON.stringify(nextGames));
+          } catch (e) {}
+          broadcastSync({ type: 'GAMES_UPDATED', payload: nextGames });
+          return nextGames;
+        });
         saveGameToCloud(updatedGame).catch((err) => {
           console.warn('[Firebase] Lỗi cập nhật trạng thái ẩn/hiện lên cloud:', err);
         });
@@ -329,7 +431,14 @@ export default function App() {
       'Xác Nhận Xóa Trò Chơi',
       `Bạn có chắc chắn muốn XÓA VĨNH VIỄN trò chơi "${targetGame.title}" không? Dữ liệu này không thể hoàn tác.`,
       () => {
-        setGames((prev) => prev.filter((g) => g.id !== gameId));
+        setGames((prev) => {
+          const nextGames = prev.filter((g) => g.id !== gameId);
+          try {
+            localStorage.setItem('mslanie_games', JSON.stringify(nextGames));
+          } catch (e) {}
+          broadcastSync({ type: 'GAMES_UPDATED', payload: nextGames });
+          return nextGames;
+        });
         deleteGameFromCloud(gameId).catch((err) => {
           console.warn('[Firebase] Lỗi xóa game trên cloud:', err);
         });
@@ -341,16 +450,32 @@ export default function App() {
 
   // Save / Update Game (called from Modal & Scanner)
   const handleSaveGame = (savedGame: GameQuiz) => {
+    const gameWithTimestamp: GameQuiz = {
+      ...savedGame,
+      updatedAt: Date.now()
+    };
+
     setGames((prev) => {
-      const exists = prev.some((g) => g.id === savedGame.id);
-      if (exists) {
-        return prev.map((g) => (g.id === savedGame.id ? savedGame : g));
+      const exists = prev.some((g) => g.id === gameWithTimestamp.id);
+      const nextGames = exists
+        ? prev.map((g) => (g.id === gameWithTimestamp.id ? gameWithTimestamp : g))
+        : [gameWithTimestamp, ...prev];
+
+      // Ghi ngay lập tức vào localStorage để F5 không bao giờ mất dữ liệu
+      try {
+        localStorage.setItem('mslanie_games', JSON.stringify(nextGames));
+      } catch (e) {
+        console.error('[Storage] Lỗi ghi localStorage:', e);
       }
-      return [savedGame, ...prev];
+
+      // Phát tín hiệu đồng bộ ngay sang tất cả các tab khác
+      broadcastSync({ type: 'GAMES_UPDATED', payload: nextGames });
+
+      return nextGames;
     });
 
     // Luôn đẩy trực tiếp lên Firebase Realtime Database
-    saveGameToCloud(savedGame)
+    saveGameToCloud(gameWithTimestamp)
       .then(() => {
         setCloudStatus('connected');
         setLastSyncTime(new Date());
@@ -365,10 +490,27 @@ export default function App() {
 
   // Save score from student game play
   const handleSaveScore = (entry: LeaderboardEntry) => {
-    setLeaderboard((prev) => [entry, ...prev]);
-    setGames((prev) =>
-      prev.map((g) => (g.id === entry.gameId ? { ...g, totalPlays: g.totalPlays + 1 } : g))
-    );
+    setLeaderboard((prev) => {
+      const nextLb = [entry, ...prev];
+      try {
+        localStorage.setItem('mslanie_leaderboard', JSON.stringify(nextLb));
+      } catch (e) {}
+      broadcastSync({ type: 'LEADERBOARD_UPDATED', payload: nextLb });
+      return nextLb;
+    });
+
+    setGames((prev) => {
+      const nextGames = prev.map((g) =>
+        g.id === entry.gameId
+          ? { ...g, totalPlays: g.totalPlays + 1, updatedAt: Date.now() }
+          : g
+      );
+      try {
+        localStorage.setItem('mslanie_games', JSON.stringify(nextGames));
+      } catch (e) {}
+      broadcastSync({ type: 'GAMES_UPDATED', payload: nextGames });
+      return nextGames;
+    });
 
     // Lưu điểm học sinh lên Firebase Cloud
     saveScoreToCloud(entry).catch((err) => {
